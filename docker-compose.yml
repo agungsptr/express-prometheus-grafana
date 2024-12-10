@@ -1,0 +1,80 @@
+networks:
+  express-prometheus-grafana-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+services:
+  express:
+    build: bun-express
+    image: agungsptr/bun-express:v1.0.0
+    ports:
+      - 3000:3000
+    networks:
+      - express-prometheus-grafana-net
+
+  # For collect and store metrics
+  prometheus:
+    image: docker.io/prom/prometheus:v2.55.1
+    container_name: prometheus
+    # ports:
+    #   - 9090:9090
+    command: "--config.file=/etc/prometheus/prometheus.yaml"
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - express-prometheus-grafana-net
+
+  # Hardware exporter metrics for prometheus
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.2
+    container_name: node_exporter
+    command: "--path.rootfs=/host"
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - express-prometheus-grafana-net
+
+  # Container exporter metrics for prometheus
+  # Currently have an issue with docker desktop in mac
+  # cAdvisor can collect data from container
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    container_name: cadvisor
+    # ports:
+    #   - 8080:8080
+    volumes:
+      - /:/rootfs:ro
+      - /run:/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - /sys/class/dmi:/sys/class/dmi:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    restart: unless-stopped
+    networks:
+      - express-prometheus-grafana-net
+
+  # For visualization metrics from prometheus
+  grafana:
+    image: docker.io/grafana/grafana-oss:11.4.0
+    container_name: grafana
+    ports:
+      - 8000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - express-prometheus-grafana-net
